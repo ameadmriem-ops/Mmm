@@ -94,20 +94,25 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
         fun setAppNotificationsEnabled(context: Context, enabled: Boolean) {
             val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             prefs.edit().putBoolean(KEY_NOTIFICATIONS_ENABLED, enabled).apply()
+            val token = getSavedToken(context)
             try {
                 if (enabled) {
-                    FirebaseMessaging.getInstance().subscribeToTopic("all_users")
-                    FirebaseMessaging.getInstance().subscribeToTopic("anime_updates")
-                    if (isAdminDevice(context)) {
-                        FirebaseMessaging.getInstance().subscribeToTopic("admin_alerts")
+                    if (token.isNotBlank()) {
+                        FirebaseMessaging.getInstance().subscribeToTopic("all_users")
+                        FirebaseMessaging.getInstance().subscribeToTopic("anime_updates")
+                        if (isAdminDevice(context)) {
+                            FirebaseMessaging.getInstance().subscribeToTopic("admin_alerts")
+                        }
                     }
                 } else {
-                    FirebaseMessaging.getInstance().unsubscribeFromTopic("all_users")
-                    FirebaseMessaging.getInstance().unsubscribeFromTopic("anime_updates")
-                    FirebaseMessaging.getInstance().unsubscribeFromTopic("admin_alerts")
+                    if (token.isNotBlank()) {
+                        FirebaseMessaging.getInstance().unsubscribeFromTopic("all_users")
+                        FirebaseMessaging.getInstance().unsubscribeFromTopic("anime_updates")
+                        FirebaseMessaging.getInstance().unsubscribeFromTopic("admin_alerts")
+                    }
                     NotificationManagerCompat.from(context).cancelAll()
                 }
-                syncDeviceRegistrationInFirestore(context, getSavedToken(context))
+                syncDeviceRegistrationInFirestore(context, token)
             } catch (e: Exception) {
                 Log.w(TAG, "Failed to update FCM topic subscription: ${e.message}")
             }

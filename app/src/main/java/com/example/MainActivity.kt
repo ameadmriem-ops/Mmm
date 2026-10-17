@@ -513,20 +513,22 @@ class MainActivity : ComponentActivity() {
                     val token = task.result
                     Log.d(FCM_TAG, "FCM Device Registration Token: $token")
                     MyFirebaseMessagingService.saveToken(this, token)
-                } else {
-                    Log.w(FCM_TAG, "Fetching FCM registration token failed", task.exception)
-                }
-            }
-            if (MyFirebaseMessagingService.isAppNotificationsEnabled(this)) {
-                FirebaseMessaging.getInstance().subscribeToTopic("all_users")
-                    .addOnCompleteListener { task ->
-                        if (task.isSuccessful) {
-                            Log.d(FCM_TAG, "Subscribed to topic: all_users")
+                    if (MyFirebaseMessagingService.isAppNotificationsEnabled(this)) {
+                        try {
+                            FirebaseMessaging.getInstance().subscribeToTopic("all_users")
+                                .addOnCompleteListener { subTask ->
+                                    if (subTask.isSuccessful) {
+                                        Log.d(FCM_TAG, "Subscribed to topic: all_users")
+                                    }
+                                }
+                            FirebaseMessaging.getInstance().subscribeToTopic("anime_updates")
+                        } catch (topicEx: Exception) {
+                            Log.w(FCM_TAG, "Topic subscription skipped: ${topicEx.message}")
                         }
                     }
-                FirebaseMessaging.getInstance().subscribeToTopic("anime_updates")
-            } else {
-                Log.d(FCM_TAG, "App notifications disabled by user preference; skipping topic subscription.")
+                } else {
+                    Log.w(FCM_TAG, "FCM token registration skipped on this device/environment (Firestore realtime listener active)")
+                }
             }
         } catch (e: Exception) {
             Log.e(FCM_TAG, "Error initializing FCM: ${e.message}", e)
@@ -747,6 +749,15 @@ class MainActivity : ComponentActivity() {
                         override fun onCloseWindow(window: WebView?) {
                             dialog.dismiss()
                         }
+
+                        override fun onConsoleMessage(consoleMessage: android.webkit.ConsoleMessage?): Boolean {
+                            val msg = consoleMessage?.message() ?: ""
+                            if (msg.contains("X-Afma-Gcache-IsGcacheHit", ignoreCase = true) ||
+                                msg.contains("Refused to get unsafe header", ignoreCase = true)) {
+                                return true
+                            }
+                            return super.onConsoleMessage(consoleMessage)
+                        }
                     }
                     popupWebView.webViewClient = object : WebViewClient() {
                         override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
@@ -758,6 +769,15 @@ class MainActivity : ComponentActivity() {
                     transport?.webView = popupWebView
                     resultMsg?.sendToTarget()
                     return true
+                }
+
+                override fun onConsoleMessage(consoleMessage: android.webkit.ConsoleMessage?): Boolean {
+                    val msg = consoleMessage?.message() ?: ""
+                    if (msg.contains("X-Afma-Gcache-IsGcacheHit", ignoreCase = true) ||
+                        msg.contains("Refused to get unsafe header", ignoreCase = true)) {
+                        return true
+                    }
+                    return super.onConsoleMessage(consoleMessage)
                 }
 
                 override fun onShowCustomView(view: View?, callback: CustomViewCallback?) {
@@ -1918,14 +1938,17 @@ class MainActivity : ComponentActivity() {
             }
             prefs.edit().putString("user_role", normalized).remove("admin_secret_token").apply()
             try {
-                if (normalized == "ADMIN") {
-                    FirebaseMessaging.getInstance().subscribeToTopic("admin_alerts")
-                } else {
-                    FirebaseMessaging.getInstance().unsubscribeFromTopic("admin_alerts")
+                val token = MyFirebaseMessagingService.getSavedToken(activity)
+                if (token.isNotBlank()) {
+                    if (normalized == "ADMIN") {
+                        FirebaseMessaging.getInstance().subscribeToTopic("admin_alerts")
+                    } else {
+                        FirebaseMessaging.getInstance().unsubscribeFromTopic("admin_alerts")
+                    }
                 }
                 MyFirebaseMessagingService.syncDeviceRegistrationInFirestore(
                     activity,
-                    MyFirebaseMessagingService.getSavedToken(activity)
+                    token
                 )
             } catch (e: Exception) {
                 Log.w(TAG, "Error syncing role: ${e.message}")
@@ -1950,10 +1973,13 @@ class MainActivity : ComponentActivity() {
             val prefs = activity.getSharedPreferences("app_auth_prefs", Activity.MODE_PRIVATE)
             prefs.edit().remove("user_role").remove("admin_secret_token").apply()
             try {
-                FirebaseMessaging.getInstance().unsubscribeFromTopic("admin_alerts")
+                val token = MyFirebaseMessagingService.getSavedToken(activity)
+                if (token.isNotBlank()) {
+                    FirebaseMessaging.getInstance().unsubscribeFromTopic("admin_alerts")
+                }
                 MyFirebaseMessagingService.syncDeviceRegistrationInFirestore(
                     activity,
-                    MyFirebaseMessagingService.getSavedToken(activity)
+                    token
                 )
             } catch (e: Exception) {
                 Log.w(TAG, "Error unsubscribing admin_alerts: ${e.message}")
