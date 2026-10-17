@@ -1,0 +1,6 @@
+{
+  "name": "Black Anime",
+  "description": "Black Anime & Movies streaming app with notifications and video player",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
